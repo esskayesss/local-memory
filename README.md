@@ -161,6 +161,22 @@ bun run dev
 
 Use `.env.example` as reference if you want to run outside Docker.
 
+## Memory MCP E2E Test Summary
+
+Validated in build mode with full read/write coverage:
+
+- Bag lifecycle: `list_bags`, `upsert_bag` (create + update), `delete_bag`
+- Memory lifecycle: `store_memory`, `recall_memories`, `update_memory`, `delete_memory`
+- Retrieval controls: bag scoping, `kinds`, `tags`, `topK`, and `candidateLimit`
+- Guardrails: disallowed `kind` enforcement, `force: true` required for non-empty bag deletion
+- System protection: seeded bags require `allowSystem: true` for deletion
+- Idempotency check: second delete for same memory returns `deleted: false`
+
+Cleanup verification from the test run:
+
+- Disposable test bag and all pre-existing bags were deleted
+- Final `list_bags` result was empty (`[]`)
+
 ## Maintainer and Credits
 
 - Maintainer: `esskayesss` (`imesskayesss@protonmail.com`)
