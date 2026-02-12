@@ -1,5 +1,5 @@
 import { getDb } from "./db/client";
-import { listBags, upsertBag } from "./bags/service";
+import { deleteBag, listBags, upsertBag } from "./bags/service";
 import { deleteMemory, storeMemory, updateMemory } from "./memory/store";
 import { recallMemories } from "./memory/recall";
 import { config } from "./config";
@@ -85,6 +85,24 @@ export function startServer(): void {
             return json({ bag }, 200);
           } catch (error) {
             return badRequest(error instanceof Error ? error.message : "Failed to upsert bag");
+          }
+        },
+      },
+      "/bags/delete": {
+        POST: async (request) => {
+          try {
+            const body = await parseJson(request);
+            const name = String(body.name ?? "").trim();
+            if (!name) return badRequest("name is required");
+
+            const result = deleteBag(db, {
+              name,
+              force: Boolean(body.force),
+              allowSystem: Boolean(body.allowSystem),
+            });
+            return json(result);
+          } catch (error) {
+            return badRequest(error instanceof Error ? error.message : "Failed to delete bag");
           }
         },
       },

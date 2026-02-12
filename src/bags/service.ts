@@ -12,6 +12,8 @@ const KINDS: MemoryKind[] = [
   "note",
 ];
 
+const PROTECTED_BAGS = new Set(["session-summaries", "coding-style", "life-preferences"]);
+
 function normalizeKinds(input: unknown): MemoryKind[] {
   if (!Array.isArray(input)) return [];
   const filtered = input.filter((kind): kind is MemoryKind =>
@@ -123,4 +125,48 @@ export function upsertBag(
   );
 
   return getBagPolicy(db, input.name)!;
+}
+
+export function deleteBag(
+  db: Database,
+  input: {
+    name: string;
+    force?: boolean;
+    allowSystem?: boolean;
+  },
+): { deleted: boolean; name: string; deletedMemories: number } {
+  const name = input.name.trim();
+  if (!name) throw new Error("name is required");
+
+  const existing = getBagPolicy(db, name);
+  if (!existing) {
+    return { deleted: false, name, deletedMemories: 0 };
+  }
+
+  if (PROTECTED_BAGS.has(name) && !input.allowSystem) {
+    throw new Error(`bag '${name}' is protected; set allowSystem=true to delete`);
+  }
+
+  const row = db
+    .query(`SELECT COUNT(1) as count FROM memories WHERE bag = ?`)
+    .get(name) as { count: number } | null;
+  const memoryCount = Number(row?.count ?? 0);
+
+  if (memoryCount > 0 && !input.force) {
+    throw new Error(`bag '${name}' has ${memoryCount} memories; set force=true to delete`);
+  }
+
+  const runDelete = db.transaction((bagName: string, shouldDeleteMemories: boolean) => {
+    if (shouldDeleteMemories) {
+      db.query(`DELETE FROM memories WHERE bag = ?`).run(bagName);
+    }
+    return db.query(`DELETE FROM bags WHERE name = ?`).run(bagName) as { changes?: number };
+  });
+
+  const result = runDelete(name, memoryCount > 0);
+  return {
+    deleted: Number(result.changes ?? 0) > 0,
+    name,
+    deletedMemories: memoryCount,
+  };
 }

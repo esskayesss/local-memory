@@ -2,7 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { z } from "zod/v4";
 
-import { listBags, upsertBag } from "./bags/service";
+import { deleteBag, listBags, upsertBag } from "./bags/service";
 import { getDb } from "./db/client";
 import { recallMemories } from "./memory/recall";
 import { deleteMemory, storeMemory, updateMemory } from "./memory/store";
@@ -61,6 +61,26 @@ function buildMcpServer(): McpServer {
       return {
         content: [{ type: "text", text: JSON.stringify({ bag }, null, 2) }],
         structuredContent: { bag },
+      };
+    },
+  );
+
+  server.registerTool(
+    "delete_bag",
+    {
+      title: "Delete Bag",
+      description: "Delete a bag policy. Requires force=true when memories exist.",
+      inputSchema: {
+        name: z.string().min(1),
+        force: z.boolean().optional(),
+        allowSystem: z.boolean().optional(),
+      },
+    },
+    async (input) => {
+      const result = deleteBag(db, input);
+      return {
+        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        structuredContent: result,
       };
     },
   );
