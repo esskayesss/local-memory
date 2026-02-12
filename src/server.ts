@@ -31,6 +31,10 @@ function escapeHtml(value: string): string {
     .replaceAll("'", "&#39;");
 }
 
+function bagAnchorId(name: string): string {
+  return `bag-${encodeURIComponent(name)}`;
+}
+
 function parseJsonArray(raw: string): string[] {
   try {
     const parsed = JSON.parse(raw);
@@ -47,6 +51,16 @@ function prettyJson(raw: string): string {
     return JSON.stringify(parsed, null, 2);
   } catch {
     return raw;
+  }
+}
+
+function parseSourceObject(raw: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return parsed as Record<string, unknown>;
+  } catch {
+    return {};
   }
 }
 
@@ -95,17 +109,37 @@ function renderAuditPage(db: ReturnType<typeof getDb>): string {
       const kindSummary = [...kindCounts.entries()]
         .sort((a, b) => b[1] - a[1])
         .map(([kind, count]) => `${kind} (${count})`)
-        .join(" • ");
+        .join(" | ");
 
       const memoryCards =
         bagMemories.length === 0
           ? `<p class="empty">No memories stored in this bag.</p>`
           : bagMemories
-              .map((memory) => {
+              .map((memory, index) => {
                 const tags = parseJsonArray(memory.tagsJson);
-                const source = prettyJson(memory.sourceJson);
+                const sourceObject = parseSourceObject(memory.sourceJson);
+                const hasSourceFields = Object.keys(sourceObject).length > 0;
+                const source = hasSourceFields
+                  ? prettyJson(memory.sourceJson)
+                  : JSON.stringify(
+                      {
+                        _note: "No explicit source metadata was provided when this memory was stored.",
+                        derived: {
+                          id: memory.id,
+                          bag: memory.bag,
+                          kind: memory.kind,
+                          importance: memory.importance,
+                          tags,
+                          createdAt: memory.createdAt,
+                          updatedAt: memory.updatedAt,
+                        },
+                      },
+                      null,
+                      2,
+                    );
+                const hiddenClass = index >= 25 ? " hidden" : "";
                 return `
-                <article class="memory" data-kind="${escapeHtml(memory.kind)}">
+                <article class="memory${hiddenClass}" data-kind="${escapeHtml(memory.kind)}" data-memory-index="${index}">
                   <div class="memory-head">
                     <span class="pill kind">${escapeHtml(memory.kind)}</span>
                     <span class="pill importance">importance ${memory.importance}</span>
@@ -122,7 +156,7 @@ function renderAuditPage(db: ReturnType<typeof getDb>): string {
                     ${tags.length > 0 ? tags.map((tag) => `<span class="pill tag">${escapeHtml(tag)}</span>`).join("") : `<span class="muted">no tags</span>`}
                   </div>
                   <details>
-                    <summary>source json</summary>
+                    <summary>${hasSourceFields ? "source json" : "source metadata (derived)"}</summary>
                     <pre>${escapeHtml(source)}</pre>
                   </details>
                 </article>
@@ -130,25 +164,40 @@ function renderAuditPage(db: ReturnType<typeof getDb>): string {
               })
               .join("\n");
 
+      const loadMore =
+        bagMemories.length > 25
+          ? `<button class="load-more" data-bag="${escapeHtml(bag.name)}" type="button">Load more (${bagMemories.length - 25} remaining)</button>`
+          : "";
+
       return `
-      <section class="bag" data-bag-name="${escapeHtml(bag.name)}" data-bag-description="${escapeHtml(bag.description ?? "")}">
-        <header>
-          <h2>${escapeHtml(bag.name)}</h2>
-          <p>${escapeHtml(bag.description ?? "No description")}</p>
-          <div class="stats">
+      <section class="bag" data-bag-name="${escapeHtml(bag.name)}" data-bag-description="${escapeHtml(bag.description ?? "")}" id="${bagAnchorId(bag.name)}">
+        <details class="bag-details" ${bagMemories.length > 0 ? "" : "open"}>
+          <summary>
+            <span class="bag-title">${escapeHtml(bag.name)}</span>
             <span class="pill">${bagMemories.length} memories</span>
-            <span class="pill">defaultTopK ${bag.defaultTopK}</span>
-            <span class="pill">recencyHalfLifeDays ${bag.recencyHalfLifeDays}</span>
-            <span class="pill">importanceWeight ${bag.importanceWeight}</span>
+            <span class="pill">kinds: ${escapeHtml(kindSummary || "none")}</span>
+          </summary>
+          <div class="bag-body">
+            <p>${escapeHtml(bag.description ?? "No description")}</p>
+            <div class="stats">
+              <span class="pill">defaultTopK ${bag.defaultTopK}</span>
+              <span class="pill">recencyHalfLifeDays ${bag.recencyHalfLifeDays}</span>
+              <span class="pill">importanceWeight ${bag.importanceWeight}</span>
+              <span class="pill">allowed kinds: ${escapeHtml(bag.allowedKinds.length > 0 ? bag.allowedKinds.join(", ") : "all")}</span>
+            </div>
+            <div class="memory-list">${memoryCards}</div>
+            ${loadMore}
           </div>
-          <div class="stats">
-            <span class="pill">allowed kinds: ${escapeHtml(bag.allowedKinds.length > 0 ? bag.allowedKinds.join(", ") : "all")}</span>
-            <span class="pill">kinds present: ${escapeHtml(kindSummary || "none")}</span>
-          </div>
-        </header>
-        <div class="memory-list">${memoryCards}</div>
+        </details>
       </section>
     `;
+    })
+    .join("\n");
+
+  const bagLinks = bags
+    .map((bag) => {
+      const count = memoryByBag.get(bag.name)?.length ?? 0;
+      return `<a href="#${bagAnchorId(bag.name)}">${escapeHtml(bag.name)} <span>${count}</span></a>`;
     })
     .join("\n");
 
@@ -160,24 +209,28 @@ function renderAuditPage(db: ReturnType<typeof getDb>): string {
     <title>Local RAG Memory Audit</title>
     <style>
       :root {
-        --bg: #f3f7f4;
-        --ink: #13211a;
-        --ink-soft: #395247;
-        --surface: #ffffff;
-        --line: #d7e2db;
-        --accent: #0a8f62;
-        --accent-soft: #e3f6ee;
-        --warn: #a84a1a;
+        --bg: #02040e;
+        --ink: #dedfe5;
+        --ink-soft: #bdbfcb;
+        --surface: #060914;
+        --line: #0e101a;
+        --error-bg: #f35b4b;
+        --error-fg: #4e0e0e;
+        --warn-bg: #e3b352;
+        --warn-fg: #4e3e0a;
+        --success-bg: #aadb71;
+        --success-fg: #213829;
+        --id-text: #7088e5;
       }
       * { box-sizing: border-box; }
       body {
         margin: 0;
         font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
         color: var(--ink);
-        background: radial-gradient(circle at 15% 0%, #d8efe4 0%, #edf4f0 42%, #f6f8f7 100%);
+        background: radial-gradient(circle at 20% 0%, #0a0d1c 0%, var(--bg) 55%);
       }
       main {
-        max-width: 1120px;
+        max-width: 1240px;
         margin: 0 auto;
         padding: 28px 18px 40px;
       }
@@ -188,9 +241,9 @@ function renderAuditPage(db: ReturnType<typeof getDb>): string {
       h1 { font-size: clamp(1.4rem, 3vw, 2.2rem); }
       h2 { font-size: 1.2rem; }
       .top {
-        background: linear-gradient(130deg, #e8f8f0, #f7fcfa 52%, #ffffff);
-        border: 1px solid var(--line);
-        border-radius: 14px;
+        background: var(--surface);
+        border: 1px solid var(--ink);
+        border-radius: 0;
         padding: 16px;
         margin-bottom: 18px;
       }
@@ -203,11 +256,49 @@ function renderAuditPage(db: ReturnType<typeof getDb>): string {
       }
       .metric {
         border: 1px solid var(--line);
-        background: var(--surface);
-        border-radius: 10px;
+        background: var(--bg);
+        border-radius: 0;
         padding: 10px;
       }
       .metric strong { display: block; font-size: 1.2rem; }
+      .layout {
+        display: grid;
+        grid-template-columns: 250px 1fr;
+        gap: 14px;
+      }
+      .sidebar {
+        border: 1px solid var(--ink);
+        background: var(--bg);
+        padding: 12px;
+        height: fit-content;
+        position: sticky;
+        top: 14px;
+      }
+      .sidebar h3 {
+        margin: 0 0 8px;
+        font-size: 0.95rem;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        color: var(--ink-soft);
+      }
+      .sidebar nav {
+        display: grid;
+        gap: 6px;
+        max-height: 70vh;
+        overflow: auto;
+      }
+      .sidebar a {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        text-decoration: none;
+        color: var(--ink);
+        border: 1px solid var(--line);
+        border-left: 3px solid var(--ink);
+        padding: 7px 8px;
+        background: var(--bg);
+      }
+      .sidebar a span { color: var(--ink-soft); }
       .controls {
         margin: 14px 0 22px;
         display: flex;
@@ -218,21 +309,36 @@ function renderAuditPage(db: ReturnType<typeof getDb>): string {
         flex: 1;
         min-width: 220px;
         border: 1px solid var(--line);
-        border-radius: 10px;
+        border-radius: 0;
         padding: 10px 12px;
         font: inherit;
+        color: var(--ink);
+        background: var(--bg);
       }
       .bag {
-        border: 1px solid var(--line);
+        border: 1px solid var(--ink);
         background: var(--surface);
-        border-radius: 14px;
+        border-radius: 0;
         padding: 14px;
         margin-bottom: 14px;
       }
-      .bag header p {
+      .bag-body p {
         margin: 6px 0 10px;
         color: var(--ink-soft);
       }
+      .bag-details summary {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        list-style: none;
+        cursor: pointer;
+      }
+      .bag-details summary::-webkit-details-marker { display: none; }
+      .bag-title {
+        font-size: 1.05rem;
+        font-family: "Space Grotesk", "Avenir Next", sans-serif;
+      }
+      .bag-body { margin-top: 10px; }
       .stats {
         display: flex;
         gap: 8px;
@@ -240,11 +346,11 @@ function renderAuditPage(db: ReturnType<typeof getDb>): string {
         margin-bottom: 8px;
       }
       .pill {
-        border-radius: 999px;
+        border-radius: 0;
         padding: 3px 10px;
         font-size: 0.82rem;
         border: 1px solid var(--line);
-        background: #fbfdfb;
+        background: var(--bg);
       }
       .memory-list {
         display: grid;
@@ -252,9 +358,9 @@ function renderAuditPage(db: ReturnType<typeof getDb>): string {
       }
       .memory {
         border: 1px solid var(--line);
-        border-radius: 10px;
+        border-radius: 0;
         padding: 10px;
-        background: #fcfffd;
+        background: var(--bg);
       }
       .memory-head {
         display: flex;
@@ -262,36 +368,52 @@ function renderAuditPage(db: ReturnType<typeof getDb>): string {
         gap: 8px;
         flex-wrap: wrap;
       }
-      .kind { background: var(--accent-soft); border-color: #b9e8d2; }
-      .importance { border-color: #f1c29d; color: var(--warn); }
-      .id { margin-left: auto; color: #637a70; font-size: 0.78rem; }
+      .kind { background: var(--bg); border-color: var(--line); color: var(--ink-soft); }
+      .importance { background: var(--warn-bg); border-color: var(--warn-bg); color: var(--warn-fg); }
+      .id { margin-left: auto; color: var(--id-text); font-size: 0.78rem; }
       .content { margin: 10px 0; line-height: 1.45; white-space: pre-wrap; }
       .meta {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
         gap: 6px;
-        color: #4b6157;
+        color: var(--ink-soft);
         font-size: 0.84rem;
       }
       .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
-      .tag { background: #f8faf9; }
-      .muted { color: #6e8379; font-size: 0.84rem; }
+      .tag { background: var(--bg); }
+      .muted { color: var(--ink-soft); font-size: 0.84rem; }
       details { margin-top: 8px; }
-      summary { cursor: pointer; color: #295645; }
+      summary { cursor: pointer; color: var(--ink-soft); }
       pre {
         margin: 8px 0 0;
-        background: #f4faf6;
+        background: var(--surface);
         border: 1px solid var(--line);
-        border-radius: 8px;
+        border-radius: 0;
         padding: 8px;
         overflow: auto;
         font-size: 0.8rem;
       }
       .empty {
-        color: #5d7269;
+        color: var(--ink-soft);
         font-style: italic;
       }
+      .load-more {
+        margin-top: 10px;
+        border: 1px solid var(--ink-soft);
+        background: var(--ink-soft);
+        color: var(--bg);
+        padding: 7px 10px;
+        font: inherit;
+        cursor: pointer;
+      }
       .hidden { display: none; }
+      @media (max-width: 920px) {
+        .layout { grid-template-columns: 1fr; }
+        .sidebar {
+          position: static;
+          max-height: none;
+        }
+      }
     </style>
   </head>
   <body>
@@ -311,13 +433,39 @@ function renderAuditPage(db: ReturnType<typeof getDb>): string {
         <input id="memory-filter" type="search" placeholder="Filter memories by content" />
       </section>
 
-      ${sections || `<section class="bag"><p class="empty">No bags found. Create a bag to begin storing memories.</p></section>`}
+      <section class="layout">
+        <aside class="sidebar">
+          <h3>Bags</h3>
+          <nav>
+            ${bagLinks || `<span class="muted">No bags available</span>`}
+          </nav>
+        </aside>
+        <div>
+          ${sections || `<section class="bag"><p class="empty">No bags found. Create a bag to begin storing memories.</p></section>`}
+        </div>
+      </section>
     </main>
 
     <script>
       const bagFilter = document.getElementById("bag-filter");
       const memoryFilter = document.getElementById("memory-filter");
       const bags = Array.from(document.querySelectorAll(".bag"));
+      const PAGE_SIZE = 25;
+
+      function refreshLoadMoreButtons() {
+        for (const button of document.querySelectorAll(".load-more")) {
+          const bagName = button.dataset.bag;
+          const bag = document.querySelector('.bag[data-bag-name="' + bagName + '"]');
+          if (!bag) continue;
+          const hiddenCount = bag.querySelectorAll(".memory.hidden").length;
+          if (hiddenCount <= 0) {
+            button.classList.add("hidden");
+          } else {
+            button.classList.remove("hidden");
+            button.textContent = "Load more (" + hiddenCount + " remaining)";
+          }
+        }
+      }
 
       function applyFilter() {
         const bagNeedle = (bagFilter.value || "").toLowerCase();
@@ -333,17 +481,32 @@ function renderAuditPage(db: ReturnType<typeof getDb>): string {
           for (const card of memoryCards) {
             const text = (card.textContent || "").toLowerCase();
             const memoryMatches = !memoryNeedle || text.includes(memoryNeedle);
-            card.classList.toggle("hidden", !memoryMatches);
+            card.classList.toggle("hidden", !memoryMatches || Number(card.dataset.memoryIndex || 0) >= PAGE_SIZE);
             if (memoryMatches) visibleMemories += 1;
           }
 
           const hasAnyMemoryOrNoMemoryCards = memoryCards.length === 0 || visibleMemories > 0;
           bag.classList.toggle("hidden", !(bagMatches && hasAnyMemoryOrNoMemoryCards));
         }
+
+        refreshLoadMoreButtons();
       }
+
+      document.addEventListener("click", (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLButtonElement) || !target.classList.contains("load-more")) return;
+        const bagName = target.dataset.bag;
+        const bag = document.querySelector('.bag[data-bag-name="' + bagName + '"]');
+        if (!bag) return;
+
+        const hiddenCards = Array.from(bag.querySelectorAll(".memory.hidden"));
+        hiddenCards.slice(0, PAGE_SIZE).forEach((card) => card.classList.remove("hidden"));
+        refreshLoadMoreButtons();
+      });
 
       bagFilter?.addEventListener("input", applyFilter);
       memoryFilter?.addEventListener("input", applyFilter);
+      refreshLoadMoreButtons();
     </script>
   </body>
 </html>`;
@@ -374,6 +537,22 @@ async function parseJson(request: Request): Promise<Record<string, unknown>> {
   } catch {
     throw new Error("Invalid JSON body");
   }
+}
+
+function buildSourceMetadata(request: Request, source: unknown): Record<string, unknown> {
+  if (source && typeof source === "object" && !Array.isArray(source)) {
+    const provided = source as Record<string, unknown>;
+    if (Object.keys(provided).length > 0) return provided;
+  }
+
+  return {
+    transport: "http",
+    method: request.method,
+    path: new URL(request.url).pathname,
+    userAgent: request.headers.get("user-agent") ?? "unknown",
+    forwardedFor: request.headers.get("x-forwarded-for") ?? "unknown",
+    storedAt: new Date().toISOString(),
+  };
 }
 
 export function startServer(): void {
@@ -463,10 +642,7 @@ export function startServer(): void {
               content: String(body.content ?? ""),
               tags: Array.isArray(body.tags) ? body.tags.map((tag) => String(tag)) : [],
               importance: typeof body.importance === "number" ? body.importance : undefined,
-              source:
-                body.source && typeof body.source === "object"
-                  ? (body.source as Record<string, unknown>)
-                  : {},
+              source: buildSourceMetadata(request, body.source),
               expiresAt:
                 body.expiresAt === undefined
                   ? null
