@@ -4,8 +4,10 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.26.0",
     "ai": "^6.0.82",
-    "ai-sdk-ollama": "^3.7.0"
+    "ai-sdk-ollama": "^3.7.0",
+    "zod": "^4.3.6"
   },
   "scripts": {
     "dev": "bun --watch src/server.ts",

@@ -4,6 +4,7 @@ import { deleteMemory, storeMemory, updateMemory } from "./memory/store";
 import { recallMemories } from "./memory/recall";
 import { config } from "./config";
 import type { MemoryKind } from "./types";
+import { handleMcpRequest } from "./mcp";
 
 const SUPPORTED_KINDS = new Set(["summary", "preference", "constraint", "decision", "fact", "note"]);
 
@@ -49,6 +50,7 @@ export function startServer(): void {
             service: "local-rag-memory",
             embeddingModel: config.embeddingModel,
             ollamaUrl: config.ollamaUrl,
+            mcpEndpoint: `http://${config.host}:${config.port}/mcp`,
             timestamp: new Date().toISOString(),
           }),
       },
@@ -175,7 +177,28 @@ export function startServer(): void {
         },
       },
     },
-    fetch: () => json({ error: "not_found" }, 404),
+    fetch: async (request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/mcp") {
+        try {
+          return await handleMcpRequest(request);
+        } catch (error) {
+          return json(
+            {
+              jsonrpc: "2.0",
+              error: {
+                code: -32603,
+                message: error instanceof Error ? error.message : "MCP server error",
+              },
+              id: null,
+            },
+            500,
+          );
+        }
+      }
+
+      return json({ error: "not_found" }, 404);
+    },
   });
 
   console.log(`Server running at http://${config.host}:${config.port}`);

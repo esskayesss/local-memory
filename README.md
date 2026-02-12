@@ -25,11 +25,36 @@ This will:
 
 API is exposed at `http://<host>:8787`.
 
+MCP endpoint is exposed at `http://<host>:8787/mcp`.
+
 ## API
 
 ### Health
 
 `GET /health`
+
+### MCP
+
+- Streamable HTTP MCP endpoint: `POST/GET/DELETE /mcp`
+- Registered tools:
+  - `list_bags`
+  - `upsert_bag`
+  - `store_memory`
+  - `recall_memories`
+  - `update_memory`
+  - `delete_memory`
+
+Example MCP client config (address-based):
+
+```json
+{
+  "mcpServers": {
+    "local-rag": {
+      "url": "http://<host>:8787/mcp"
+    }
+  }
+}
+```
 
 ### Bags
 
