@@ -213,7 +213,7 @@ function renderAuditPage(db: ReturnType<typeof getDb>): string {
         --ink: #dedfe5;
         --ink-soft: #bdbfcb;
         --surface: #060914;
-        --line: #0e101a;
+        --line: #3E4049;
         --error-bg: #f35b4b;
         --error-fg: #4e0e0e;
         --warn-bg: #e3b352;
