@@ -241,8 +241,8 @@ function renderAuditPage(db: ReturnType<typeof getDb>): string {
       h1 { font-size: clamp(1.4rem, 3vw, 2.2rem); }
       h2 { font-size: 1.2rem; }
       .top {
-        background: var(--surface);
-        border: 1px solid var(--ink);
+        background: var(--bg);
+        border: 1px solid var(--line);
         border-radius: 0;
         padding: 16px;
         margin-bottom: 18px;
@@ -267,7 +267,7 @@ function renderAuditPage(db: ReturnType<typeof getDb>): string {
         gap: 14px;
       }
       .sidebar {
-        border: 1px solid var(--ink);
+        border: 1px solid var(--line);
         background: var(--bg);
         padding: 12px;
         height: fit-content;
@@ -294,7 +294,7 @@ function renderAuditPage(db: ReturnType<typeof getDb>): string {
         text-decoration: none;
         color: var(--ink);
         border: 1px solid var(--line);
-        border-left: 3px solid var(--ink);
+        border-left: 3px solid var(--line);
         padding: 7px 8px;
         background: var(--bg);
       }
@@ -316,8 +316,8 @@ function renderAuditPage(db: ReturnType<typeof getDb>): string {
         background: var(--bg);
       }
       .bag {
-        border: 1px solid var(--ink);
-        background: var(--surface);
+        border: 1px solid var(--line);
+        background: var(--bg);
         border-radius: 0;
         padding: 14px;
         margin-bottom: 14px;
