@@ -322,6 +322,9 @@ function renderAuditPage(db: ReturnType<typeof getDb>): string {
         padding: 14px;
         margin-bottom: 14px;
       }
+      .bag:has(.bag-details:not([open])) {
+        cursor: pointer;
+      }
       .bag-body p {
         margin: 6px 0 10px;
         color: var(--ink-soft);
@@ -494,6 +497,19 @@ function renderAuditPage(db: ReturnType<typeof getDb>): string {
 
       document.addEventListener("click", (event) => {
         const target = event.target;
+
+        const clickedElement = target instanceof Element ? target : null;
+        const inBag = clickedElement?.closest(".bag") ?? null;
+        if (inBag instanceof HTMLElement) {
+          const details = inBag.querySelector(".bag-details");
+          const clickedInteractive =
+            clickedElement?.closest("button, a, input, textarea, select, summary, details, pre") ?? null;
+          if (details instanceof HTMLDetailsElement && !details.open && !clickedInteractive) {
+            details.open = true;
+            return;
+          }
+        }
+
         if (!(target instanceof HTMLButtonElement) || !target.classList.contains("load-more")) return;
         const bagName = target.dataset.bag;
         const bag = document.querySelector('.bag[data-bag-name="' + bagName + '"]');
