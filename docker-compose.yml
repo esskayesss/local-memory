@@ -1,0 +1,50 @@
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: local-rag-ollama
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: local-rag-app
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8787
+      DB_PATH: /var/lib/local-rag/memory.db
+      OLLAMA_URL: http://ollama:11434
+      EMBEDDING_MODEL: nomic-embed-text
+      OLLAMA_TIMEOUT_MS: 120000
+      AUTO_PULL_MODEL: "true"
+      DEFAULT_CANDIDATE_LIMIT: 600
+    ports:
+      - "8787:8787"
+    volumes:
+      - memory_data:/var/lib/local-rag
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "bun",
+          "-e",
+          "fetch('http://localhost:8787/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+        ]
+      interval: 20s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  memory_data:
+  ollama_data:

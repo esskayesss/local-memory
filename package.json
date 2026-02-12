@@ -1,0 +1,20 @@
+{
+  "name": "local-rag-memory",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "ai": "^6.0.82",
+    "ai-sdk-ollama": "^3.7.0"
+  },
+  "scripts": {
+    "dev": "bun --watch src/server.ts",
+    "start": "bun src/server.ts",
+    "start:docker": "bun src/bootstrap.ts",
+    "migrate": "bun src/db/migrate.ts",
+    "test": "bun test"
+  },
+  "engines": {
+    "bun": ">=1.1.0"
+  }
+}
